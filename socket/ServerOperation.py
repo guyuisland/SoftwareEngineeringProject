@@ -8,13 +8,7 @@ import datetime
 Username, Userpassword = None, None
 UserActive = []
 UserInfoPath = "Info\\"
-# 首先看一些总的问题：
-# 1. 我在考虑要不要引入某个模块，直接调用Windows的系统时间，这样就不用我们手动去写一个clock了
-# 2. 我的登录界面，信息接收模块和计时计费模块是分离的，所以就算是单用户，也是开了多线程
-# 3. 细节的实现问题我都在函数里写明了。此外还有一些大型的功能，比如信息接入数据库，多用户的情况下在后台模拟多空调机调度，计费算法都需要你来写了。
-# 4. 最终保存的信息需要与数据库进行同步，包括空调计费信息，使用细节以及管理员登录账号和密码，测试阶段可以使用excel存储
-# 5. 真实环境的温度模拟
-# 溜了溜了，继续肝操作系统的作业……
+
 class ServerData:
     virtualClock = 0
     socket_pool = {}  # 并发的实时信息线程池
@@ -31,7 +25,8 @@ class ServerData:
     SocketSucceed = {}
     timeline = ""  # 获取的系统实际时间
     RoomCount = 0  # 当前已经启动的客户端数目
-    RoomStatus = {}  #保存房间每分钟的情况
+    RoomStatus = {}  # 保存房间每分钟的情况
+    ID = {}  # 保存每个房间的ID号
 
     def getCost(self):  # 对外接口，读取当前总花销
         return self.Cost
@@ -75,8 +70,13 @@ class ServerData:
             self.TemperatureSet[RoomNumber] = 26
             self.RunTime[RoomNumber] = 0
             self.Mode[RoomNumber] = 0
-            self.isRun[RoomNumber] = 1
+            self.isRun[RoomNumber] = 0
             self.Cost[RoomNumber] = 0
+
+            # --------------------------------------------------------这里需要补充：从数据库获取ID号--------------------------------
+            self.ID[RoomNumber] = "test"
+            # ---------------------------------------------------------------------------------------------------------------------
+
             MultiSocket = Thread(target=self.RealTimeInfoOper, args=(newServerSocket, RoomNumber))
             MultiSocket.setDaemon(True)
             MultiSocket.start()
@@ -89,7 +89,6 @@ class ServerData:
             newServerSocket.send(str(self.RunTime[RoomNumber]).encode())
             newServerSocket.recv(1024)
             newServerSocket.send(self.timeline.encode())
-            # print(self.timeline)
             newServerSocket.recv(1024)
             newServerSocket.send(str(self.Cost[RoomNumber]).encode())
             newServerSocket.recv(1024)
@@ -103,11 +102,13 @@ class ServerData:
             newServerSocket.recv(1024)
             newServerSocket.send(str(self.virtualClock).encode())
             newServerSocket.recv(1024)
+            newServerSocket.send(self.ID[RoomNumber].encode())
+            newServerSocket.recv(1024)
             newServerSocket.send("isRoomTempChange".encode())
             self.Temperature[RoomNumber] = newServerSocket.recv(1024).decode()
             if self.virtualClock % 60 == 0:
                 for i in range(self.RoomCount):
-                    CostRecord(i)
+                    self.CostRecord(i)
             time.sleep(3)
 
     def Time(self, RoomNumber):  # 这里需要补充：将用时映射为几时几分的具体时间
@@ -122,13 +123,13 @@ class ServerData:
         roomData.Temperature = self.Temperature[RoomNumber]
         roomData.TemperatureSet = self.TemperatureSet[RoomNumber]
         roomData.WindSpeed = self.WindSpeed[RoomNumber]
-        flag = self.status_is_diff(RoomStatus[RoomNumber][-1],roomData)
-        if flag == 0:  #如果是相同的
-            RoomStatus[RoomNumber].append(roomData)
-        elif flag == 1:  #前一个状态跟当前状态不同
-            pass  #把RoomNumber的数据存放到数据库中
-            RoomStatus[RoomNumber].clear()  #把之前的数据删除
-            RoomStatus[RoomNumber].append(roomData)  #把本次数据写入
+        flag = self.status_is_diff(self.RoomStatus[RoomNumber][-1],roomData)
+        if flag == 0:  # 如果是相同的
+            self.RoomStatus[RoomNumber].append(roomData)
+        elif flag == 1:  # 前一个状态跟当前状态不同
+            pass  # 把RoomNumber的数据存放到数据库中
+            self.RoomStatus[RoomNumber].clear()  # 把之前的数据删除
+            self.RoomStatus[RoomNumber].append(roomData)  # 把本次数据写入
         # CurrentData = []
         # CurrentData.append(self.CLOCK[RoomNumber])
         # CurrentData.append(self.WindSpeed[RoomNumber])
@@ -140,16 +141,15 @@ class ServerData:
         # self.UserData[RoomNumber].append(CurrentData)
 
     def CostCalcu(self, RoomNumber):  # 需要补充计费策略
-        if self.isRun[RoomNumber] == 1:  #该房间空调正在运行
-            if self.WindSpeed[RoomNumber] % 3 == 0:  #低风状态
+        if self.isRun[RoomNumber] == 1:  # 该房间空调正在运行
+            if self.WindSpeed[RoomNumber] % 3 == 0:  # 低风状态
                 self.Cost[RoomNumber] += (1/3)
-            elif self.WindSpeed[RoomNumber] % 3 == 1:  #中风状态
+            elif self.WindSpeed[RoomNumber] % 3 == 1:  # 中风状态
                 self.Cost[RoomNumber] += 0.5
-            elif self.WindSpeed[RoomNumber] % 3 == 2:  #高风状态
+            elif self.WindSpeed[RoomNumber] % 3 == 2:  # 高风状态
                 self.Cost[RoomNumber] += 1
 
     def Menu(self, newServerSocket2, RoomNumber):  # 与客户端的Menu对应
-        # print("@@@@@@@@@@@@@@@@@@@@@@@@@")
         choose = newServerSocket2.recv(1024).decode()
         print("choose:", choose)
         if choose == "1":
@@ -172,6 +172,28 @@ class ServerData:
         elif choose == "4":
             isRun = newServerSocket2.recv(1024).decode()
             self.isRun[RoomNumber] = int(isRun)
+
+        elif choose == "5":
+            """
+            -------------------------------------------------------------
+            需要补充：
+            1. 向数据库发送请求，更新退房前最后的信息
+            2. 从数据库获取一个新的ID号
+            3. 重新初始化该房间的缺省信息
+            -------------------------------------------------------------
+            """
+            newID = "newID"
+            self.ID[RoomNumber] = newID
+            self.CLOCK[RoomNumber] = 0
+            self.WindSpeed[RoomNumber] = 0
+            self.Temperature[RoomNumber] = 18
+            self.TemperatureSet[RoomNumber] = 26
+            self.RunTime[RoomNumber] = 0
+            self.Mode[RoomNumber] = 0
+            self.isRun[RoomNumber] = 0
+            self.Cost[RoomNumber] = 0
+            newServerSocket2.send(str(newID).encode())
+
         else:
             pass
 
@@ -224,5 +246,4 @@ class Room:
         self.TemperatureSet = 0    #保存房间设置的温度
         self.WindSpeed = 0    #保存当前风速
         self.Mode = 0    #保存制冷制热模式
-        self.COLCK = 0
-        
+        self.CLOCK = 0

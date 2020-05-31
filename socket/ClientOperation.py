@@ -14,9 +14,10 @@ class UI:
     Cost = 0
     RunTime = 0
     Mode = 1  # 1为制冷模式，0为制热模式
-    isRun = 1  # 记录当前是否正在运行客户端,1表示运行
+    isRun = 0  # 记录当前是否正在运行客户端,1表示运行
     ConnectSucceed = False
     timeline = ""  # 从后台同步系统实际时间
+    ID = "NULL"
 
     def WindSetting(self):  # 修改风速
         # 该模块当前仅设置了传输的模块功能，剩余还需要补充的有：快速连续输入的模式下，需要合并在1s内输入的结果记录在change里，该功能尽量在Menu函数里调用这个函数的时候实现
@@ -38,7 +39,7 @@ class UI:
         oper = input()  # 输入1，升高一度，输入0，减少1度
         if(self.Mode == True) and (self.TemperatureSet < 29) and (oper == "1"):  # 制冷模式升温操作
             self.TemperatureSet += 1
-        elif (self.Mode == True) and (self.TemperatureSet > 18) and (oper == "0"): # 制冷模式降温操作
+        elif (self.Mode == True) and (self.TemperatureSet > 18) and (oper == "0"):  # 制冷模式降温操作
             self.TemperatureSet -= 1
         elif (self.Mode == False) and (self.TemperatureSet < 30) and (oper == "1"):  # 制热模式升温操作
             self.TemperatureSet += 1
@@ -54,6 +55,7 @@ class UI:
         print("当前设定温度为:", self.TemperatureSet)
         print("当前实际温度为:", self.Temperature)
         print("当前温控模式为:", self.Mode)
+        print("当前的ID为：", self.ID)
         print("\n")
 
     def RunSet(self):
@@ -65,20 +67,20 @@ class UI:
         print("Please input the operation you want:\n1. Change the wind\n2. Change the temperatue\n3. Change the mode\n")
         choose = input()
         self.ClientSocket2.send(str(choose).encode())
-        if choose == "1":#修改风速
+        if choose == "1":  # 修改风速
             print("The wind speed now is ", self.WindSpeed)
             self.WindSetting()
             self.ClientSocket2.send(str(self.WindSpeed).encode())
             return 1
 
-        elif choose == "2":#修改温度
+        elif choose == "2":  # 修改温度
             print("The Temperature in room now is ", self.Temperature)
             print("当前设定温度为：", self.TemperatureSet)
             # 尽量在此处实现1s输入下，合并输入信息的环节，温度和模式同理
             self.TempSetting()
             self.ClientSocket2.send(str(self.TemperatureSet).encode())
 
-        elif choose == "3":#修改模式(制冷还是制热)
+        elif choose == "3":  # 修改模式(制冷还是制热)
             print("Current mode is", self.Mode)
             self.ModeSetting()
             print(str(self.Mode))
@@ -89,6 +91,9 @@ class UI:
         elif choose == "4":  # 切换开关机模式
             self.RunSet()
             self.ClientSocket2.send(str(self.isRun).encode())
+
+        elif choose == "5":  # 退房
+            self.ID = self.ClientSocket2.recv(1024).decode()  # 接受数据库分配的ID
 
         else:
             print(choose, "the input is wrong ,Please input again...")
@@ -101,15 +106,16 @@ class Room:  # 房间类，包含UI和sensor类
     ClientSocket2 = None
     WindSpeed = 0  # 表示风速的调整模式，0最低，2最高，一个思路是，change每次+1并模3，实现风速的低中高循环,从而可以少设置一个按键
     TemperatureSet = 25  # 房间的设定温度
-    InitialTemperature = 26  #房间的初始温度
+    InitialTemperature = 26  # 房间的初始温度
     Cost = 0
     RunTime = 0
     Mode = 1  # 1为制冷模式，0为制热模式
-    isRun = 1  # 记录当前是否正在运行客户端,1表示运行
+    isRun = 0  # 记录当前是否正在运行客户端,1表示运行
     ConnectSucceed = False
     timeline = ""  # 从后台同步系统实际时间
     UIInfo = None
     isWindChange = 1
+    ID = "NULL"
 
     def __init__(self):
         self.WindSpeedTime = 0  # 当前风速持续的时间
@@ -159,7 +165,12 @@ class Room:  # 房间类，包含UI和sensor类
         self.virtualClock = self.ClientSocket.recv(1024).decode()
         self.virtualClock = int(self.virtualClock)
         self.ClientSocket.send("#".encode())
-        #self.UIInfo.TransBuild()
+
+        self.ID = self.ClientSocket.recv(1024).decode()
+        self.UIInfo.ID = self.ID
+        self.ClientSocket.send("#".encode())
+
+        self.UIInfo.TransBuild()
 
     def TransBuild(self):  # 实时信息传输的线程
         self.ClientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -173,12 +184,11 @@ class Room:  # 房间类，包含UI和sensor类
 
         while True:
             self.UIUpdate()
-            #print(self.isWindChange)
             if self.isWindChange == 1:
                 self.WindSpeedTime = 0
                 self.isWindChange = 0
             self.WindSpeedTime += 1
-            self.TempChange() #判断是否是整分才会修改温度
+            self.TempChange()  # 判断是否是整分才会修改温度
 
         # 关闭套接字
         self.ClientSocket.close()
@@ -195,29 +205,29 @@ class Room:  # 房间类，包含UI和sensor类
             self.isWindChange = self.UIInfo.Menu()
 
     def TempChange(self):  # 修改房间温度,这里的算法需要你来完成，现在这个是我随手写的
-        if self.virtualClock % 60 == 0:  #整分的情况，才会修改温度
-            if self.isRun == 1:  #如果房间的空调属于运行状态
-                if self.Mode == 0:  #制热情况
+        if self.virtualClock % 60 == 0:  # 整分的情况，才会修改温度
+            if self.isRun == 1:  # 如果房间的空调属于运行状态
+                if self.Mode == 0:  # 制热情况
                     if self.WindSpeed == 1:
                         self.sensor.Temp += 0.4
                     elif self.WindSpeed == 2:
                         self.sensor.Temp += 0.5
                     elif self.WindSpeed == 3:
                         self.sensor.Temp += 0.6
-                elif self.Mode == 1:  #制冷情况
+                elif self.Mode == 1:  # 制冷情况
                     if self.WindSpeed == 1:
                         self.sensor.Temp -= 0.4
                     elif self.WindSpeed == 2:
                         self.sensor.Temp -= 0.5
                     elif self.WindSpeed == 3:
                         self.sensor.Temp -= 0.6
-            elif self.isRun == 0 or WindSpeedTime < 0:  #房间空调处于关机状态或者处于停止送风
-                if self.sensor.Temp > self.InitialTemperature:  #比初始化温度高会降温
+            elif self.isRun == 0 or self.WindSpeedTime < 0:  # 房间空调处于关机状态或者处于停止送风
+                if self.sensor.Temp > self.InitialTemperature:  # 比初始化温度高会降温
                     if self.sensor.Temp - self.InitialTemperature > 0.5:
                         self.sensor.Temp -= 0.5
                     else:
                         self.sensor.Temp = self.InitialTemperature
-                elif self.sensor.Temp < self.InitialTemperature:  #比初始化温度低会升温
+                elif self.sensor.Temp < self.InitialTemperature:  # 比初始化温度低会升温
                     if self.InitialTemperature - self.sensor.Temp > 0.5:
                         self.sensor.Temp += 0.5
                     else:
@@ -230,8 +240,6 @@ class Room:  # 房间类，包含UI和sensor类
 
         def GetTemp(self):
             return self.Temp
-
-
 
 test = Room()
 
