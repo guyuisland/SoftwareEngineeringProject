@@ -105,6 +105,9 @@ class ServerData:
             newServerSocket.recv(1024)
             newServerSocket.send("isRoomTempChange".encode())
             self.Temperature[RoomNumber] = newServerSocket.recv(1024).decode()
+            if self.virtualClock % 60 == 0:
+                for i in range(self.RoomCount):
+                    CostRecord(i)
             time.sleep(3)
 
     def Time(self, RoomNumber):  # 这里需要补充：将用时映射为几时几分的具体时间

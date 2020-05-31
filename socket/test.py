@@ -15,5 +15,10 @@ class Room:
         self.WindSpeed = 0    #保存当前风速
         self.Mode = 0    #保存制冷制热模式
 
-print(-2 %3)
+
+l = [[1,2,3],{'a':{'b':'bb','m':'mm'},'c':'cc'},[4,5,6]]
+l[1][222] = 'zzzz'
+print(len(l[1]))
+print(l)
+print(23//100)
 

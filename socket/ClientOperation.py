@@ -178,7 +178,7 @@ class Room:  # 房间类，包含UI和sensor类
                 self.WindSpeedTime = 0
                 self.isWindChange = 0
             self.WindSpeedTime += 1
-            self.TempChange()
+            self.TempChange() #判断是否是整分才会修改温度
 
         # 关闭套接字
         self.ClientSocket.close()
@@ -198,18 +198,18 @@ class Room:  # 房间类，包含UI和sensor类
         if self.virtualClock % 60 == 0:  #整分的情况，才会修改温度
             if self.isRun == 1:  #如果房间的空调属于运行状态
                 if self.Mode == 0:  #制热情况
-                    if self.WindSpeedTime == 1:
+                    if self.WindSpeed == 1:
                         self.sensor.Temp += 0.4
-                    elif self.WindSpeedTime == 2:
+                    elif self.WindSpeed == 2:
                         self.sensor.Temp += 0.5
-                    elif self.WindSpeedTime == 3:
+                    elif self.WindSpeed == 3:
                         self.sensor.Temp += 0.6
                 elif self.Mode == 1:  #制冷情况
-                    if self.WindSpeedTime == 1:
+                    if self.WindSpeed == 1:
                         self.sensor.Temp -= 0.4
-                    elif self.WindSpeedTime == 2:
+                    elif self.WindSpeed == 2:
                         self.sensor.Temp -= 0.5
-                    elif self.WindSpeedTime == 3:
+                    elif self.WindSpeed == 3:
                         self.sensor.Temp -= 0.6
             elif self.isRun == 0 or WindSpeedTime < 0:  #房间空调处于关机状态或者处于停止送风
                 if self.sensor.Temp > self.InitialTemperature:  #比初始化温度高会降温
