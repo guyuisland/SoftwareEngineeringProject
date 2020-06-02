@@ -5,7 +5,6 @@ from time import sleep
 import os
 
 class UI:
-    ClientSocket = None
     ClientSocket2 = None
     WindSpeed = 1  # 表示风速的调整模式，1最低，3最高，一个思路是，change每次+1并模3，实现风速的低中高循环,从而可以少设置一个按键
     Temperature = 18  # 房间的实际温度
@@ -15,7 +14,6 @@ class UI:
     RunTime = 0
     Mode = 1  # 1为制冷模式，0为制热模式
     isRun = 0  # 记录当前是否正在运行客户端,1表示运行
-    ConnectSucceed = False
     timeline = ""  # 从后台同步系统实际时间
     ID = "NULL"
 
@@ -204,43 +202,77 @@ class Room:  # 房间类，包含UI和sensor类
         while True:
             self.isWindChange = self.UIInfo.Menu()
 
-    def TempChange(self):  # 修改房间温度,这里的算法需要你来完成，现在这个是我随手写的
+    def TempChange(self):  # 获取房间温度
         if self.virtualClock % 60 == 0:  # 整分的情况，才会修改温度
-            if self.isRun == 1:  # 如果房间的空调属于运行状态
-                if self.Mode == 0:  # 制热情况
-                    if self.WindSpeed == 1:
-                        self.sensor.Temp += 0.4
-                    elif self.WindSpeed == 2:
-                        self.sensor.Temp += 0.5
-                    elif self.WindSpeed == 3:
-                        self.sensor.Temp += 0.6
-                elif self.Mode == 1:  # 制冷情况
-                    if self.WindSpeed == 1:
-                        self.sensor.Temp -= 0.4
-                    elif self.WindSpeed == 2:
-                        self.sensor.Temp -= 0.5
-                    elif self.WindSpeed == 3:
-                        self.sensor.Temp -= 0.6
-            elif self.isRun == 0 or self.WindSpeedTime < 0:  # 房间空调处于关机状态或者处于停止送风
-                if self.sensor.Temp > self.InitialTemperature:  # 比初始化温度高会降温
-                    if self.sensor.Temp - self.InitialTemperature > 0.5:
-                        self.sensor.Temp -= 0.5
-                    else:
-                        self.sensor.Temp = self.InitialTemperature
-                elif self.sensor.Temp < self.InitialTemperature:  # 比初始化温度低会升温
-                    if self.InitialTemperature - self.sensor.Temp > 0.5:
-                        self.sensor.Temp += 0.5
-                    else:
-                        self.sensor.Temp = self.InitialTemperature
+            self.sensor.GetTemp(self.isRun, self.Mode, self.WindSpeed, self.InitialTemperature, self.WindSpeedTime)
+            self.Temperature = self.sensor.Temp
+
+            '''
+            if self.Mode == 0:  # 制热情况
+                if self.WindSpeed == 1:
+                    self.sensor.Temp += 0.4
+                elif self.WindSpeed == 2:
+                    self.sensor.Temp += 0.5
+                elif self.WindSpeed == 3:
+                    self.sensor.Temp += 0.6
+            elif self.Mode == 1:  # 制冷情况
+                if self.WindSpeed == 1:
+                    self.sensor.Temp -= 0.4
+                elif self.WindSpeed == 2:
+                    self.sensor.Temp -= 0.5
+                elif self.WindSpeed == 3:
+                    self.sensor.Temp -= 0.6
+        elif self.isRun == 0 or self.WindSpeedTime < 0:  # 房间空调处于关机状态或者处于停止送风
+            if self.sensor.Temp > self.InitialTemperature:  # 比初始化温度高会降温
+                if self.sensor.Temp - self.InitialTemperature > 0.5:
+                    self.sensor.Temp -= 0.5
+                else:
+                    self.sensor.Temp = self.InitialTemperature
+            elif self.sensor.Temp < self.InitialTemperature:  # 比初始化温度低会升温
+                if self.InitialTemperature - self.sensor.Temp > 0.5:
+                    self.sensor.Temp += 0.5
+                else:
+                    self.sensor.Temp = self.InitialTemperature
+            '''
         self.ClientSocket.recv(1024)
         self.ClientSocket.send(str(self.sensor.Temp).encode())
 
     class Sensor:  # 传感器类，检测温度
         Temp = 26
 
-        def GetTemp(self):
-            return self.Temp
+        def GetTemp(self, isRun, Mode, WindSpeed, InitialTemperature, WindSpeedTime):
+            if isRun == 1:  # 如果房间的空调属于运行状态
+                if Mode == 0:  # 制热情况
+                    if WindSpeed == 1:
+                        self.Temp += 0.4
+                    elif WindSpeed == 2:
+                        self.Temp += 0.5
+                    elif WindSpeed == 3:
+                        self.Temp += 0.6
+                elif Mode == 1:  # 制冷情况
+                    if WindSpeed == 1:
+                        self.Temp -= 0.4
+                    elif WindSpeed == 2:
+                        self.Temp -= 0.5
+                    elif WindSpeed == 3:
+                        self.Temp -= 0.6
+            elif isRun == 0 or WindSpeedTime < 0:  # 房间空调处于关机状态或者处于停止送风
+                if self.Temp > InitialTemperature:  # 比初始化温度高会降温
+                    if self.Temp - InitialTemperature > 0.5:
+                        self.Temp -= 0.5
+                    else:
+                        self.Temp = InitialTemperature
+                elif self.Temp < InitialTemperature:  # 比初始化温度低会升温
+                    if InitialTemperature - self.Temp > 0.5:
+                        self.Temp += 0.5
+                    else:
+                        self.Temp = InitialTemperature
 
 test = Room()
 
 
+'''
+房间UI界面包含的信息和按键：
+按键类：升温，降温，模式，退房，关机/开机，风速（每次调解是mod）
+显示的信息：实时温度，设定温度，设定风速，实际风速（低中高和停止送风），计费信息，制冷制热模式
+'''
